@@ -44,6 +44,9 @@ For database config see table structure in `helpers/db_models.py` file.
 - `MASTER_SETTINGS_ROW_ID` - record id for master row in settings db
 
 ## Changelog
+### v0.0-r3 - 10.12.2017
+Day stats count
+
 ### v0.0-r2 - 09.12.2017
 First 'stable' alpha
 

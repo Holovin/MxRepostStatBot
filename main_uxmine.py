@@ -38,15 +38,16 @@ if __name__ == '__main__':
     logger = logging.getLogger(LOGGER_NAME)
     logger_setup(Config.LOG_FULL_PATH, [LOGGER_NAME], True)
 
-    # 1st run
-    if not os.path.isfile(Config.SQLITE_DB_FULL_PATH):
-        Serve.create_tables(Database.get_db())
-        logger.info('Tables created. Need restart...')
-        exit(100)
-
     # init
     app = API(Config.BOT_ID, Config.SECRET_TOKEN, logger)
     tz = timezone(Config.TIMEZONE)
+
+    # 1st run
+    if not os.path.isfile(Config.SQLITE_DB_FULL_PATH):
+        Serve.create_tables(Database.get_db())
+        app.api_send_message(Config.TELEGRAM_ADMIN_TO, 'Bot init ok!')
+        logger.info('Tables created. Need restart...')
+        exit(100)
 
     # db
     database = Database.get_db()
@@ -164,21 +165,19 @@ if __name__ == '__main__':
                 if event.get('event_type') == 'logged':
                     user.time_last_login = event_time
                     user.total_enter_times += 1
-                    Events.new_test = True  # TODO: Remove
 
                 # parse log_lines-out event
                 elif event.get('event_type') == 'left':
                     user.time_last_logout = event_time
                     user.time_last_login = str_to_time(user.time_last_login)
 
-                    user.time_online_total += (user.time_last_logout - user.time_last_login).seconds
-                    Events.new_test = True  # TODO: Remove
+                    last_session_duration = (user.time_last_logout - user.time_last_login).seconds
+                    user.time_online_day += last_session_duration
+                    user.time_online_total += last_session_duration
 
-                # new day, reset day aka iteration_stat
+                # new day!
                 if today.day != str_to_time(bot_data.time_last_check).day:
-                    logging.info('Reset today counter')
                     Events.new_day = True
-                    user.time_online_day = 0
 
                 # save anyway
                 user.save()
@@ -220,7 +219,11 @@ if __name__ == '__main__':
 
             # 2 -- new day
             elif Events.new_day:
-                trigger_message = 'новый день'
+                trigger_message = 'новый день\n\n'
+                trigger_message = 'Онлайн сегодня (всего) [минут]:'
+
+                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total).limit(20)):
+                    trigger_message += '\n{}. {}: {} ({})'.format(i + 1, user.name, user.time_online_day // 60, user.time_online_total // 60)
 
             # check
             elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) or not trigger_message:
@@ -246,6 +249,7 @@ if __name__ == '__main__':
                                trigger_message))
 
             app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+            app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
             logging.info('Send message... {}'.format(message))
 
             # update
@@ -254,6 +258,8 @@ if __name__ == '__main__':
             bot_data.total_online_previous = total_online_users
 
             if Events.new_day:
+                # reset user data [after write event about this]
+                User.update(time_online_day=0).execute()
                 bot_data.total_yesterday_users = total_today_users
 
             bot_data.save()
