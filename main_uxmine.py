@@ -188,7 +188,7 @@ if __name__ == '__main__':
             seconds_from_previous_message = datetime.now(tz) - str_to_time(bot_data.time_last_write)
 
             total_all_users = User.select().count()
-            total_new_users = User.select().where(User.time_registration > bot_data.time_last_check)
+            total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
             total_today_users = User.select().where(User.time_last_login > datetime.now(tz).time().replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
             total_online_users = User.select().where(User.time_last_login >= User.time_last_logout).wrapped_count()
 
@@ -249,7 +249,10 @@ if __name__ == '__main__':
                                trigger_message))
 
             app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
-            app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
+
+            if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
+                app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
+
             logging.info('Send message... {}'.format(message))
 
             # update
