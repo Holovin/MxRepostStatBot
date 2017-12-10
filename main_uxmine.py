@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     # (c) Блеать как ты так пишешь экспрешены
     # precompile rexgex
-    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+.+: (?P<name>\w+) (?P<event_type>left|logged)')
+    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+: (?P<name>\w+)(\[.+\])? (?P<event_type>left|logged).+$')
     logger.info('Init ok...')
 
     # __ DO
@@ -128,13 +128,16 @@ if __name__ == '__main__':
                 event_time = today.replace(
                     hour=int(event.get('time_h')),
                     minute=int(event.get('time_m')),
-                    second=int(event.get('time_s'))
+                    second=int(event.get('time_s')),
+                    microsecond=0
                 )
 
                 # skip old lines
-                if str_to_time(bot_data.time_last_write) > event_time:
+                if str_to_time(bot_data.time_last_read) >= event_time:
                     logger.info('Skip line: {}'.format(log_event_line[:80]))
                     continue
+
+                bot_data.time_last_read = event_time
 
                 # debug
                 logger.debug('Parsed {} :: {} {}'.format(event_time, event.get('name')[:4], event.get('event_type')))
@@ -157,7 +160,10 @@ if __name__ == '__main__':
 
                     # update memory db
                     users.append(user)
-                    logger.info('Add new user {}'.format(user.name))
+
+                    msg = 'Add new user {}'.format(user.name)
+                    logger.info(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 logger.info('Use user {}'.format(user.name))
 
@@ -165,6 +171,12 @@ if __name__ == '__main__':
                 if event.get('event_type') == 'logged':
                     user.time_last_login = event_time
                     user.total_enter_times += 1
+
+                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _зашёл_ ({})\n' \
+                        .format(event_time, user.name, user.total_enter_times)
+
+                    logger.debug(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 # parse log_lines-out event
                 elif event.get('event_type') == 'left':
@@ -174,6 +186,12 @@ if __name__ == '__main__':
                     last_session_duration = (user.time_last_logout - user.time_last_login).seconds
                     user.time_online_day += last_session_duration
                     user.time_online_total += last_session_duration
+
+                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _вышел_ ({})\nСессия (мин): {}\n' \
+                        .format(event_time, user.name, user.total_enter_times, last_session_duration // 60)
+
+                    logger.debug(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 # new day!
                 if today.day != str_to_time(bot_data.time_last_check).day:
@@ -219,8 +237,8 @@ if __name__ == '__main__':
 
             # 2 -- new day
             elif Events.new_day:
-                trigger_message = 'новый день\n\n'
-                trigger_message = 'Онлайн сегодня (всего) [минут]:'
+                trigger_message = 'новый день\n\n' \
+                                  'Онлайн сегодня (всего) [минут]:'
 
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total).limit(20)):
                     trigger_message += '\n{}. {}: {} ({})'.format(i + 1, user.name, user.time_online_day // 60, user.time_online_total // 60)
@@ -230,12 +248,11 @@ if __name__ == '__main__':
                 logger.info('Skip writing, because timedelta is low + no important events')
                 continue
 
-            # 3 -- login
-            # 4 -- no trigger - check timer
+            # 3 -- no trigger - check timer
             else:
                 trigger_message = 'таймер'
 
-            # report
+            # prepare report
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
                        'Играли сегодня: {:+d} ({:+d})\n'
