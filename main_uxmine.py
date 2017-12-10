@@ -190,13 +190,13 @@ if __name__ == '__main__':
             total_all_users = User.select().count()
             total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
             total_today_users = User.select().where(User.time_last_login > datetime.now(tz).time().replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
-            total_online_users = User.select().where(User.time_last_login >= User.time_last_logout).wrapped_count()
+            total_online_users = User.select().where(User.time_last_login > User.time_last_logout).wrapped_count()
 
             # change limits
             if total_online_users == 0:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_NO_USERS
 
-            elif 1 <= total_today_users <= 2:
+            elif 1 <= total_online_users <= 2:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_FEW_USERS
 
             else:
@@ -226,7 +226,7 @@ if __name__ == '__main__':
                     trigger_message += '\n{}. {}: {} ({})'.format(i + 1, user.name, user.time_online_day // 60, user.time_online_total // 60)
 
             # check
-            elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) or not trigger_message:
+            elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
                 logger.info('Skip writing, because timedelta is low + no important events')
                 continue
 
