@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
     # (c) Блеать как ты так пишешь экспрешены
     # precompile rexgex
-    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+.+: (?P<name>\w+).+(?P<event_type>left|logged)')
+    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+.+: (?P<name>\w+) (?P<event_type>left|logged)')
     logger.info('Init ok...')
 
     # __ DO
@@ -100,7 +100,7 @@ if __name__ == '__main__':
             bot_data.save()
 
             # start check
-            with open(Config.LATEST_MC_LOG_FULL_PATH, 'r') as log_file:
+            with open(Config.LATEST_MC_LOG_FULL_PATH, 'r', encoding='utf-8') as log_file:
                 log_lines = log_file.readlines()
 
             # check file
@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
             # parse events
             for log_event_line in log_lines:
-                event = re_log_line.match(log_event_line)
+                event = re_log_line.match(log_event_line.replace('{}[m'.format(chr(27)), ''))
 
                 # skip wrong line
                 if not event:
