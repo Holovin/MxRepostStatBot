@@ -19,6 +19,15 @@ from helpers.logger import logger_setup
 
 LOGGER_NAME = 'ux_mine_bot'
 
+MARKDOWN_ESCAPE = str.maketrans({
+    '\\': r'\\',
+    '*': r'\*',
+    '_': r'\_',
+    '[': r'\[',
+    '(': r'\(',
+    '`': r'\`'
+})
+
 
 class Events:
     new_users = False
@@ -31,6 +40,10 @@ def str_to_time(data):
         return parse(data)
 
     return data
+
+
+def markdown_escape(text):
+    return text.translate(MARKDOWN_ESCAPE)
 
 
 if __name__ == '__main__':
@@ -71,7 +84,7 @@ if __name__ == '__main__':
 
     # (c) Блеать как ты так пишешь экспрешены
     # precompile rexgex
-    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+: (?P<name>\w+)(\[.+\])? (?P<event_type>left|logged).+$')
+    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+: (?P<name>.*?)(\[\/.+\])? (?P<event_type>left|logged).+$')
     logger.info('Init ok...')
 
     # __ DO
@@ -140,7 +153,7 @@ if __name__ == '__main__':
                 bot_data.time_last_read = event_time
 
                 # debug
-                logger.debug('Parsed {} :: {} {}'.format(event_time, event.get('name')[:4], event.get('event_type')))
+                logger.debug('Parsed {} :: {} {}'.format(event_time, event.get('name'), event.get('event_type')))
 
                 # find user
                 user = next((x for x in users if x.name == event.get('name')), None)
@@ -161,7 +174,7 @@ if __name__ == '__main__':
                     # update memory db
                     users.append(user)
 
-                    msg = 'Add new user {}'.format(user.name)
+                    msg = 'Add new user {}'.format(markdown_escape(user.name))
                     logger.info(msg)
                     app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
@@ -173,7 +186,7 @@ if __name__ == '__main__':
                     user.total_enter_times += 1
 
                     msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _зашёл_ ({})\n' \
-                        .format(event_time, user.name, user.total_enter_times)
+                        .format(event_time, markdown_escape(user.name), user.total_enter_times)
 
                     logger.debug(msg)
                     app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
@@ -188,7 +201,7 @@ if __name__ == '__main__':
                     user.time_online_total += last_session_duration
 
                     msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _вышел_ ({})\nСессия (мин): {}\n' \
-                        .format(event_time, user.name, user.total_enter_times, last_session_duration // 60)
+                        .format(event_time, markdown_escape(user.name), user.total_enter_times, last_session_duration // 60)
 
                     logger.debug(msg)
                     app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
@@ -230,7 +243,7 @@ if __name__ == '__main__':
                 trigger_message = 'новые пользователи: '
 
                 for new_user in total_new_users:
-                    trigger_message += '{},'.format(new_user.name)
+                    trigger_message += '{},'.format(markdown_escape(new_user.name))
 
                 # fix last char
                 trigger_message = trigger_message.strip(',')
@@ -241,7 +254,7 @@ if __name__ == '__main__':
                                   'Онлайн сегодня (всего) [минут]:'
 
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total).limit(20)):
-                    trigger_message += '\n{}. {}: {} ({})'.format(i + 1, user.name, user.time_online_day // 60, user.time_online_total // 60)
+                    trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
             elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
@@ -265,7 +278,8 @@ if __name__ == '__main__':
                                total_online_users, (total_online_users - bot_data.total_online_previous),
                                trigger_message))
 
-            app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+            # TODO: for dev
+            # app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
 
             if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
                 app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
