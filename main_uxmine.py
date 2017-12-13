@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
             total_all_users = User.select().count()
             total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
-            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).time().replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
+            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
             total_online_users = User.select().where(User.time_last_login > User.time_last_logout).wrapped_count()
 
             # change limits
