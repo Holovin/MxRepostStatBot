@@ -100,8 +100,14 @@ if __name__ == '__main__':
             log_lines = None
             today = datetime.now(tz)
 
+            # freeze time
+            if today.day != str_to_time(bot_data.time_last_check).day or today.day != str_to_time(bot_data.time_last_write).day:
+                logging.info('Sleep for long time (new day)')
+                time.sleep(5 * 60)  # TODO: ???
+                Events.new_day = True
+
             # need check?
-            if today - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
+            elif today - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
                 logger.info('Sleep for {} seconds'.format(Config.CHECK_SLEEP_TIME_SECONDS))
                 bot_data.time_last_check = datetime.now(tz)
                 bot_data.save()
@@ -206,14 +212,10 @@ if __name__ == '__main__':
                     logger.debug(msg)
                     app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
-                # new day!
-                if today.day != str_to_time(bot_data.time_last_check).day:
-                    Events.new_day = True
-
                 # save anyway
                 user.save()
 
-            # go
+            # update
             message = ''
             trigger_message = ''
             seconds_from_previous_message = datetime.now(tz) - str_to_time(bot_data.time_last_write)
@@ -222,6 +224,8 @@ if __name__ == '__main__':
             total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
             total_today_users = User.select().where(User.time_last_login > datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
             total_online_users = User.select().where(User.time_last_login > User.time_last_logout).wrapped_count()
+
+            bot_data.time_last_write = datetime.now(tz)
 
             # change limits
             if total_online_users == 0:
@@ -268,11 +272,11 @@ if __name__ == '__main__':
             # prepare report
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
-                       'Играли сегодня: {:+d} ({:+d})\n'
+                       'Сегодня: {:+d} (вчера: {:+d})\n'
                        'Онлайн: {:+d} ({:+d})\n'
                        'Триггер: {}\n'
                        '#uxmine'
-                       .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, datetime.now(tz),
+                       .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, bot_data.time_last_write,
                                total_all_users, (total_all_users - bot_data.total_all_users),
                                total_today_users, (total_today_users - bot_data.total_yesterday_users),
                                total_online_users, (total_online_users - bot_data.total_online_previous),
@@ -287,7 +291,6 @@ if __name__ == '__main__':
             logging.info('Send message... {}'.format(message))
 
             # update
-            bot_data.time_last_write = datetime.now(tz)
             bot_data.total_all_users = total_all_users
             bot_data.total_online_previous = total_online_users
 
