@@ -271,9 +271,9 @@ if __name__ == '__main__':
             # 2 -- new day
             elif Events.new_day:
                 trigger_message = 'новый день\n\n' \
-                                  'Топ онлайн сегодня :'
+                                  'Топ онлайн за день:'
 
-                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(20)):
+                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(Config.DAY_REPORT_USERS_TOP_LIMIT)):
                     trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
@@ -288,7 +288,7 @@ if __name__ == '__main__':
             # prepare report
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
-                       'Сегодня: {:+d} (вчера: {:+d})\n'
+                       'Сегодня играло: {:+d} ({:+d})\n'
                        'Онлайн: {:+d} ({:+d})\n'
                        'Триггер: {}\n'
                        '#uxmine'
@@ -321,7 +321,7 @@ if __name__ == '__main__':
             message = 'Exception: {}\nTraceback: {}'.format(e, traceback.format_exc())
             logger.error(message)
             app.api_send_message(Config.TELEGRAM_ADMIN_TO, '_[ERROR]:_\n```{}```'.format(message), 'markdown')
-            exit(999)
+            time.sleep(Config.CHECK_SLEEP_TIME_SECONDS * 2)
 
         finally:
             logger.info('End iteration...\n---')
