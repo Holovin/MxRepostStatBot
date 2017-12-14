@@ -47,6 +47,19 @@ def markdown_escape(text):
     return text.translate(MARKDOWN_ESCAPE)
 
 
+def get_medal(place):
+    if place == 1:
+        return '\U0001F947'
+
+    if place == 2:
+        return '\U0001F948'
+
+    if place == 3:
+        return '\U0001F949'
+
+    return ''
+
+
 if __name__ == '__main__':
     # logs
     logger = logging.getLogger(LOGGER_NAME)
@@ -274,7 +287,7 @@ if __name__ == '__main__':
                                   'Топ онлайн за день:'
 
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(Config.DAY_REPORT_USERS_TOP_LIMIT)):
-                    trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
+                    trigger_message += '\n{}. {}{}: {} ({})'.format(i + 1, get_medal(i + 1), markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
             elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
@@ -289,7 +302,7 @@ if __name__ == '__main__':
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
                        'Сегодня играло: {:+d} ({:+d})\n'
-                       'Онлайн: {:+d} ({:+d})\n'
+                       'Онлайн: {:+d} ({:+d})\n\n'
                        'Триггер: {}\n'
                        '#uxmine'
                        .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, bot_data.time_last_write,
@@ -299,9 +312,8 @@ if __name__ == '__main__':
                                trigger_message))
 
             # TODO: for dev
-            #app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
-
-            #if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
+            # app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+            # if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
             app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
 
             logging.info('Send message... {}'.format(message))
@@ -318,7 +330,7 @@ if __name__ == '__main__':
             bot_data.save()
 
         except Exception as e:
-            message = 'Exception: {}\nTraceback: {}'.format(e, traceback.format_exc())
+            message = '\U0001F914 Exception: {}\nTraceback: {}'.format(e, traceback.format_exc())
             logger.error(message)
             app.api_send_message(Config.TELEGRAM_ADMIN_TO, '_[ERROR]:_\n```{}```'.format(message), 'markdown')
             time.sleep(Config.CHECK_SLEEP_TIME_SECONDS * 2)
