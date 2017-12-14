@@ -4,6 +4,7 @@ import logging
 import time
 import os
 import re
+import traceback
 
 from dateutil.parser import parse
 from pytz import timezone
@@ -103,7 +104,7 @@ if __name__ == '__main__':
             # freeze time
             if time_iteration_start.day != str_to_time(bot_data.time_last_check).day or time_iteration_start.day != str_to_time(bot_data.time_last_write).day:
                 logging.info('Sleep for long time (new day)')
-                time.sleep(5 * 60)
+                time.sleep(Config.CHECK_NEW_DAY_DELAY_SECONDS)
                 Events.new_day = True
 
             # need check?
@@ -170,7 +171,7 @@ if __name__ == '__main__':
                     user = User.create(
                         name=event.get('name'),
                         time_registration=event_time,
-                        total_enter_times=1,
+                        total_enter_times=0,
                         time_last_login=event_time,
                         time_last_logout=event_time - timedelta(seconds=1),
                         time_online_total=0,
@@ -180,10 +181,6 @@ if __name__ == '__main__':
                     # update memory db
                     users.append(user)
 
-                    msg = 'Add new user {}'.format(markdown_escape(user.name))
-                    logger.info(msg)
-                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
-
                 logger.info('Use user {}'.format(user.name))
 
                 # parse log_lines-in event
@@ -191,7 +188,7 @@ if __name__ == '__main__':
                     user.time_last_login = event_time
                     user.total_enter_times += 1
 
-                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _зашёл_ ({})\n' \
+                    msg = '*[Admin]* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _зашёл_ ({})\n' \
                         .format(event_time, markdown_escape(user.name), user.total_enter_times)
 
                     logger.debug(msg)
@@ -203,16 +200,16 @@ if __name__ == '__main__':
                     user.time_last_login = str_to_time(user.time_last_login)
 
                     # if user login and logout at same day
-                    if user.time_last_logout.date() == user.time_last_login:
+                    if user.time_last_logout.date() == user.time_last_login.date():
                         last_session_duration = (user.time_last_logout - user.time_last_login).seconds
                     else:
                         # if not count difference from current day with [logout - 00:00:00.0000] time
-                        last_session_duration = (user.time_last_logout - user.time_last_logout.replace(hour=0, minute=0, second=0, microsecond=0))
+                        last_session_duration = (user.time_last_logout - user.time_last_logout.replace(hour=0, minute=0, second=0, microsecond=0)).seconds
 
                     user.time_online_day += last_session_duration
                     user.time_online_total += last_session_duration
 
-                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _вышел_ ({})\nСессия (мин): {}\n' \
+                    msg = '*[Admin]* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _вышел_ ({})\nСессия (мин): {}\n' \
                         .format(event_time, markdown_escape(user.name), user.total_enter_times, last_session_duration // 60)
 
                     logger.debug(msg)
@@ -226,7 +223,7 @@ if __name__ == '__main__':
                 for user in users:
                     if user.time_last_login > user.time_last_logout:
                         # count difference from login time and "current" time [~00:00:00.0000] of new day
-                        last_session_duration = bot_data.time_last_check - user.time_last_login
+                        last_session_duration = (bot_data.time_last_check - str_to_time(user.time_last_login)).seconds
 
                         user.time_online_day += last_session_duration
                         user.time_online_total += last_session_duration
@@ -266,15 +263,15 @@ if __name__ == '__main__':
                 trigger_message = 'новые пользователи: '
 
                 for new_user in total_new_users:
-                    trigger_message += '{},'.format(markdown_escape(new_user.name))
+                    trigger_message += '{}, '.format(markdown_escape(new_user.name))
 
                 # fix last char
-                trigger_message = trigger_message.strip(',')
+                trigger_message = trigger_message.strip(', ')
 
             # 2 -- new day
             elif Events.new_day:
                 trigger_message = 'новый день\n\n' \
-                                  'Онлайн сегодня (всего) [минут]:'
+                                  'Топ онлайн сегодня :'
 
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(20)):
                     trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
@@ -302,10 +299,10 @@ if __name__ == '__main__':
                                trigger_message))
 
             # TODO: for dev
-            # app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+            #app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
 
-            if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
-                app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
+            #if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
+            app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
 
             logging.info('Send message... {}'.format(message))
 
@@ -321,8 +318,10 @@ if __name__ == '__main__':
             bot_data.save()
 
         except Exception as e:
-            logger.error('Exception: {}'.format(e))
-            app.api_send_message(Config.TELEGRAM_ADMIN_TO, '{}'.format(e))
+            message = 'Exception: {}\nTraceback: {}'.format(e, traceback.format_exc())
+            logger.error(message)
+            app.api_send_message(Config.TELEGRAM_ADMIN_TO, '_[ERROR]:_\n```{}```'.format(message), 'markdown')
+            exit(999)
 
         finally:
             logger.info('End iteration...\n---')
