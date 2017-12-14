@@ -57,7 +57,7 @@ def get_medal(place):
     if place == 3:
         return '\U0001F949'
 
-    return ''
+    return '{}. '.format(place)
 
 
 if __name__ == '__main__':
@@ -108,7 +108,7 @@ if __name__ == '__main__':
 
             # init loop
             Events.new_users = False
-            Events.new_day = False
+            Events.new_day = True
             Events.new_test = False
 
             log_lines = None
@@ -268,12 +268,12 @@ if __name__ == '__main__':
 
             # check triggers
             if Events.new_test:
-                trigger_message = '[test]'
+                trigger_message = '[DEBUG MODE]'
 
             # 1 -- new user
             elif Events.new_users:
                 # append
-                trigger_message = 'новые пользователи: '
+                trigger_message = 'Новые пользователи: '
 
                 for new_user in total_new_users:
                     trigger_message += '{}, '.format(markdown_escape(new_user.name))
@@ -283,11 +283,10 @@ if __name__ == '__main__':
 
             # 2 -- new day
             elif Events.new_day:
-                trigger_message = 'новый день\n\n' \
-                                  'Топ онлайн за день:'
+                trigger_message = '\n*Игроки дня:*'
 
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(Config.DAY_REPORT_USERS_TOP_LIMIT)):
-                    trigger_message += '\n{}. {}{}: {} ({})'.format(i + 1, get_medal(i + 1), markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
+                    trigger_message += '\n{}{}: {} ({})'.format(get_medal(i + 1), markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
             elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
@@ -296,14 +295,14 @@ if __name__ == '__main__':
 
             # 3 -- no trigger - check timer
             else:
-                trigger_message = 'таймер'
+                trigger_message = ''
 
             # prepare report
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
                        'Сегодня играло: {:+d} ({:+d})\n'
-                       'Онлайн: {:+d} ({:+d})\n\n'
-                       'Триггер: {}\n'
+                       'Онлайн: {:+d} ({:+d})\n'
+                       '{}\n'
                        '#uxmine'
                        .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, bot_data.time_last_write,
                                total_all_users, (total_all_users - bot_data.total_all_users),
