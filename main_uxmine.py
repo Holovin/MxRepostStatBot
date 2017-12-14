@@ -19,6 +19,15 @@ from helpers.logger import logger_setup
 
 LOGGER_NAME = 'ux_mine_bot'
 
+MARKDOWN_ESCAPE = str.maketrans({
+    '\\': r'\\',
+    '*': r'\*',
+    '_': r'\_',
+    '[': r'\[',
+    '(': r'\(',
+    '`': r'\`'
+})
+
 
 class Events:
     new_users = False
@@ -33,20 +42,25 @@ def str_to_time(data):
     return data
 
 
+def markdown_escape(text):
+    return text.translate(MARKDOWN_ESCAPE)
+
+
 if __name__ == '__main__':
     # logs
     logger = logging.getLogger(LOGGER_NAME)
     logger_setup(Config.LOG_FULL_PATH, [LOGGER_NAME], True)
 
-    # 1st run
-    if not os.path.isfile(Config.SQLITE_DB_FULL_PATH):
-        Serve.create_tables(Database.get_db())
-        logger.info('Tables created. Need restart...')
-        exit(100)
-
     # init
     app = API(Config.BOT_ID, Config.SECRET_TOKEN, logger)
     tz = timezone(Config.TIMEZONE)
+
+    # 1st run
+    if not os.path.isfile(Config.SQLITE_DB_FULL_PATH):
+        Serve.create_tables(Database.get_db())
+        app.api_send_message(Config.TELEGRAM_ADMIN_TO, 'Bot init ok!')
+        logger.info('Tables created. Need restart...')
+        exit(100)
 
     # db
     database = Database.get_db()
@@ -70,13 +84,13 @@ if __name__ == '__main__':
 
     # (c) Блеать как ты так пишешь экспрешены
     # precompile rexgex
-    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+.+: (?P<name>\w+).+(?P<event_type>left|logged)')
+    re_log_line = re.compile('^\[(?P<time_h>\d{2}):(?P<time_m>\d{2}):(?P<time_s>\d{2})\].+: (?P<name>.*?)(\[\/.+\])? (?P<event_type>left|logged).+$')
     logger.info('Init ok...')
 
     # __ DO
     while True:
         try:
-            logger.info('Start [last check was at {}]'.format(bot_data.time_last_check))
+            logger.info('Start [last check was at {}, last write was at {}]'.format(bot_data.time_last_check, bot_data.time_last_write))
 
             # init loop
             Events.new_users = False
@@ -86,8 +100,14 @@ if __name__ == '__main__':
             log_lines = None
             today = datetime.now(tz)
 
+            # freeze time
+            if today.day != str_to_time(bot_data.time_last_check).day or today.day != str_to_time(bot_data.time_last_write).day:
+                logging.info('Sleep for long time (new day)')
+                time.sleep(5 * 60)  # TODO: ???
+                Events.new_day = True
+
             # need check?
-            if today - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
+            elif today - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
                 logger.info('Sleep for {} seconds'.format(Config.CHECK_SLEEP_TIME_SECONDS))
                 bot_data.time_last_check = datetime.now(tz)
                 bot_data.save()
@@ -99,7 +119,7 @@ if __name__ == '__main__':
             bot_data.save()
 
             # start check
-            with open(Config.LATEST_MC_LOG_FULL_PATH, 'r') as log_file:
+            with open(Config.LATEST_MC_LOG_FULL_PATH, 'r', encoding='utf-8') as log_file:
                 log_lines = log_file.readlines()
 
             # check file
@@ -109,7 +129,7 @@ if __name__ == '__main__':
 
             # parse events
             for log_event_line in log_lines:
-                event = re_log_line.match(log_event_line)
+                event = re_log_line.match(log_event_line.replace('{}[m'.format(chr(27)), ''))
 
                 # skip wrong line
                 if not event:
@@ -127,16 +147,19 @@ if __name__ == '__main__':
                 event_time = today.replace(
                     hour=int(event.get('time_h')),
                     minute=int(event.get('time_m')),
-                    second=int(event.get('time_s'))
+                    second=int(event.get('time_s')),
+                    microsecond=0
                 )
 
                 # skip old lines
-                if str_to_time(bot_data.time_last_write) > event_time:
+                if str_to_time(bot_data.time_last_read) >= event_time:
                     logger.info('Skip line: {}'.format(log_event_line[:80]))
                     continue
 
+                bot_data.time_last_read = event_time
+
                 # debug
-                logger.debug('Parsed {} :: {} {}'.format(event_time, event.get('name')[:4], event.get('event_type')))
+                logger.debug('Parsed {} :: {} {}'.format(event_time, event.get('name'), event.get('event_type')))
 
                 # find user
                 user = next((x for x in users if x.name == event.get('name')), None)
@@ -156,7 +179,10 @@ if __name__ == '__main__':
 
                     # update memory db
                     users.append(user)
-                    logger.info('Add new user {}'.format(user.name))
+
+                    msg = 'Add new user {}'.format(markdown_escape(user.name))
+                    logger.info(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 logger.info('Use user {}'.format(user.name))
 
@@ -164,40 +190,48 @@ if __name__ == '__main__':
                 if event.get('event_type') == 'logged':
                     user.time_last_login = event_time
                     user.total_enter_times += 1
-                    Events.new_test = True  # TODO: Remove
+
+                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _зашёл_ ({})\n' \
+                        .format(event_time, markdown_escape(user.name), user.total_enter_times)
+
+                    logger.debug(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 # parse log_lines-out event
                 elif event.get('event_type') == 'left':
                     user.time_last_logout = event_time
                     user.time_last_login = str_to_time(user.time_last_login)
 
-                    user.time_online_total += (user.time_last_logout - user.time_last_login).seconds
-                    Events.new_test = True  # TODO: Remove
+                    last_session_duration = (user.time_last_logout - user.time_last_login).seconds
+                    user.time_online_day += last_session_duration
+                    user.time_online_total += last_session_duration
 
-                # new day, reset day aka iteration_stat
-                if today.day != str_to_time(bot_data.time_last_check).day:
-                    logging.info('Reset today counter')
-                    Events.new_day = True
-                    user.time_online_day = 0
+                    msg = '*Debug* ({:%Y/%m/%d %H:%M:%S})\nЮзер {} _вышел_ ({})\nСессия (мин): {}\n' \
+                        .format(event_time, markdown_escape(user.name), user.total_enter_times, last_session_duration // 60)
+
+                    logger.debug(msg)
+                    app.api_send_message(Config.TELEGRAM_ADMIN_TO, msg, 'markdown')
 
                 # save anyway
                 user.save()
 
-            # go
+            # update
             message = ''
             trigger_message = ''
             seconds_from_previous_message = datetime.now(tz) - str_to_time(bot_data.time_last_write)
 
             total_all_users = User.select().count()
-            total_new_users = User.select().where(User.time_registration > bot_data.time_last_check)
-            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).time().replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
-            total_online_users = User.select().where(User.time_last_login >= User.time_last_logout).wrapped_count()
+            total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
+            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
+            total_online_users = User.select().where(User.time_last_login > User.time_last_logout).wrapped_count()
+
+            bot_data.time_last_write = datetime.now(tz)
 
             # change limits
             if total_online_users == 0:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_NO_USERS
 
-            elif 1 <= total_today_users <= 2:
+            elif 1 <= total_online_users <= 2:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_FEW_USERS
 
             else:
@@ -213,47 +247,56 @@ if __name__ == '__main__':
                 trigger_message = 'новые пользователи: '
 
                 for new_user in total_new_users:
-                    trigger_message += '{},'.format(new_user.name)
+                    trigger_message += '{},'.format(markdown_escape(new_user.name))
 
                 # fix last char
                 trigger_message = trigger_message.strip(',')
 
             # 2 -- new day
             elif Events.new_day:
-                trigger_message = 'новый день'
+                trigger_message = 'новый день\n\n' \
+                                  'Онлайн сегодня (всего) [минут]:'
+
+                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(20)):
+                    trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
-            elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) or not trigger_message:
+            elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
                 logger.info('Skip writing, because timedelta is low + no important events')
                 continue
 
-            # 3 -- login
-            # 4 -- no trigger - check timer
+            # 3 -- no trigger - check timer
             else:
                 trigger_message = 'таймер'
 
-            # report
+            # prepare report
             message = ('*MX Stats:* [{}]({}) ({:%Y/%m/%d %H:%M:%S})\n'
                        'Всего игроков: {:d} ({:+d})\n'
-                       'Играли сегодня: {:+d} ({:+d})\n'
+                       'Сегодня: {:+d} (вчера: {:+d})\n'
                        'Онлайн: {:+d} ({:+d})\n'
                        'Триггер: {}\n'
                        '#uxmine'
-                       .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, datetime.now(tz),
+                       .format(Config.MC_SERVER_NAME, Config.MC_SERVER_LINK, bot_data.time_last_write,
                                total_all_users, (total_all_users - bot_data.total_all_users),
                                total_today_users, (total_today_users - bot_data.total_yesterday_users),
                                total_online_users, (total_online_users - bot_data.total_online_previous),
                                trigger_message))
 
-            app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+            # TODO: for dev
+            # app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+
+            if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
+                app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
+
             logging.info('Send message... {}'.format(message))
 
             # update
-            bot_data.time_last_write = datetime.now(tz)
             bot_data.total_all_users = total_all_users
             bot_data.total_online_previous = total_online_users
 
             if Events.new_day:
+                # reset user data [after write event about this]
+                User.update(time_online_day=0).execute()
                 bot_data.total_yesterday_users = total_today_users
 
             bot_data.save()

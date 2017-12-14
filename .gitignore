@@ -2,3 +2,4 @@
 __pycache__/
 settings.db
 *log*.txt*
+config.py.default

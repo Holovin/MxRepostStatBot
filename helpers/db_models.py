@@ -45,6 +45,9 @@ class BotData(BaseModel):
     # last write
     time_last_write = DateTimeField(null=False, default=datetime.now(pytz.timezone(Config.TIMEZONE)))
 
+    # last read line from file
+    time_last_read = DateTimeField(null=False, default=datetime.now(pytz.timezone(Config.TIMEZONE)))
+
     # write every [...] if no events
     time_write_every = IntegerField(null=False, default=Config.WRITE_LIMIT_MINUTES_WHEN_NO_USERS)
 
