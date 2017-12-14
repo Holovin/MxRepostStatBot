@@ -90,7 +90,7 @@ if __name__ == '__main__':
     # __ DO
     while True:
         try:
-            logger.info('Start [last check was at {}]'.format(bot_data.time_last_check))
+            logger.info('Start [last check was at {}, last write was at {}]'.format(bot_data.time_last_check, bot_data.time_last_write))
 
             # init loop
             Events.new_users = False
