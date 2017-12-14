@@ -98,16 +98,16 @@ if __name__ == '__main__':
             Events.new_test = False
 
             log_lines = None
-            today = datetime.now(tz)
+            time_iteration_start = datetime.now(tz)
 
             # freeze time
-            if today.day != str_to_time(bot_data.time_last_check).day or today.day != str_to_time(bot_data.time_last_write).day:
+            if time_iteration_start.day != str_to_time(bot_data.time_last_check).day or time_iteration_start.day != str_to_time(bot_data.time_last_write).day:
                 logging.info('Sleep for long time (new day)')
-                time.sleep(5 * 60)  # TODO: ???
+                time.sleep(5 * 60)
                 Events.new_day = True
 
             # need check?
-            elif today - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
+            elif time_iteration_start - str_to_time(bot_data.time_last_check) < timedelta(seconds=Config.CHECK_SLEEP_TIME_SECONDS):
                 logger.info('Sleep for {} seconds'.format(Config.CHECK_SLEEP_TIME_SECONDS))
                 bot_data.time_last_check = datetime.now(tz)
                 bot_data.save()
@@ -144,7 +144,7 @@ if __name__ == '__main__':
                 event = event.groupdict()
 
                 # convert time
-                event_time = today.replace(
+                event_time = time_iteration_start.replace(
                     hour=int(event.get('time_h')),
                     minute=int(event.get('time_m')),
                     second=int(event.get('time_s')),
@@ -202,7 +202,13 @@ if __name__ == '__main__':
                     user.time_last_logout = event_time
                     user.time_last_login = str_to_time(user.time_last_login)
 
-                    last_session_duration = (user.time_last_logout - user.time_last_login).seconds
+                    # if user login and logout at same day
+                    if user.time_last_logout.date() == user.time_last_login:
+                        last_session_duration = (user.time_last_logout - user.time_last_login).seconds
+                    else:
+                        # if not count difference from current day with [logout - 00:00:00.0000] time
+                        last_session_duration = (user.time_last_logout - user.time_last_logout.replace(hour=0, minute=0, second=0, microsecond=0))
+
                     user.time_online_day += last_session_duration
                     user.time_online_total += last_session_duration
 
@@ -215,6 +221,19 @@ if __name__ == '__main__':
                 # save anyway
                 user.save()
 
+            # recount daily time stat if new day
+            if Events.new_day:
+                for user in users:
+                    if user.time_last_login > user.time_last_logout:
+                        # count difference from login time and "current" time [~00:00:00.0000] of new day
+                        last_session_duration = bot_data.time_last_check - user.time_last_login
+
+                        user.time_online_day += last_session_duration
+                        user.time_online_total += last_session_duration
+
+                        # save only if update online time
+                        user.save()
+
             # update
             message = ''
             trigger_message = ''
@@ -222,8 +241,8 @@ if __name__ == '__main__':
 
             total_all_users = User.select().count()
             total_new_users = User.select().where(User.time_registration > bot_data.time_last_write)
-            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)).wrapped_count()
-            total_online_users = User.select().where(User.time_last_login > User.time_last_logout).wrapped_count()
+            total_today_users = User.select().where(User.time_last_login > datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)).count()
+            total_online_users = User.select().where(User.time_last_login > User.time_last_logout).count()
 
             bot_data.time_last_write = datetime.now(tz)
 
@@ -231,7 +250,7 @@ if __name__ == '__main__':
             if total_online_users == 0:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_NO_USERS
 
-            elif 1 <= total_online_users <= 2:
+            elif Config.FEW_FROM <= total_online_users <= Config.FEW_TO:
                 bot_data.time_write_every = Config.WRITE_LIMIT_MINUTES_WHEN_FEW_USERS
 
             else:
