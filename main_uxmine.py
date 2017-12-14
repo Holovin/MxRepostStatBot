@@ -257,7 +257,7 @@ if __name__ == '__main__':
                 trigger_message = 'новый день\n\n' \
                                   'Онлайн сегодня (всего) [минут]:'
 
-                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total).limit(20)):
+                for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(20)):
                     trigger_message += '\n{}. {}: {} ({})'.format(i + 1, markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
             # check
