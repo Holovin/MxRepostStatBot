@@ -288,6 +288,13 @@ if __name__ == '__main__':
                 for i, user in enumerate(User.select().where(User.time_online_day > 0).order_by(User.time_online_total.desc()).limit(Config.DAY_REPORT_USERS_TOP_LIMIT)):
                     trigger_message += '\n{}{}: {} ({})'.format(get_medal(i + 1), markdown_escape(user.name), user.time_online_day // 60, user.time_online_total // 60)
 
+                # reset cache
+                # for user in users:
+                #     print(user.time_online_day)
+                #     user.time_online_day = 0
+                #     print('new {}'.format(user.time_online_day))
+                #     user.save()
+
             # check
             elif seconds_from_previous_message < timedelta(seconds=bot_data.time_write_every * 60) and not trigger_message:
                 logger.info('Skip writing, because timedelta is low + no important events')
@@ -310,10 +317,10 @@ if __name__ == '__main__':
                                total_online_users, (total_online_users - bot_data.total_online_previous),
                                trigger_message))
 
-            # TODO: for dev
-            # app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
-            # if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
-            app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
+            app.api_send_message(Config.TELEGRAM_PRINT_TO, message, 'markdown')
+
+            if Config.TELEGRAM_PRINT_TO != Config.TELEGRAM_ADMIN_TO:
+                app.api_send_message(Config.TELEGRAM_ADMIN_TO, message, 'markdown')
 
             logging.info('Send message... {}'.format(message))
 
